@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leadgen-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-leadgen}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - CLEARBIT_API_KEY=${CLEARBIT_API_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:80}
+      - DEFAULT_SEARCH_LIMIT=${DEFAULT_SEARCH_LIMIT:-100}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - leadgen-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 前端应用
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: leadgen-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - leadgen-network
+
+  # PostgreSQL数据库
+  db:
+    image: postgres:15-alpine
+    container_name: leadgen-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-leadgen}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - leadgen-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-leadgen}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  leadgen-network:
+    driver: bridge

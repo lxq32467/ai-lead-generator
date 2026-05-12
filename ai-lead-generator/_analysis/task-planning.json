@@ -1,0 +1,109 @@
+{
+  "plan_summary": "AI智能线索生成器v1.0 MVP项目计划，分为基础设施搭建、核心功能开发、集成测试和部署四个阶段，预计总工作量8-10周。",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "基础设施搭建",
+      "description": "搭建前后端基础框架、数据库设计和容器化环境，为后续功能开发奠定基础。",
+      "tasks": [
+        "T6",
+        "T7",
+        "T8"
+      ],
+      "assigned_to": "frontend, backend, devops",
+      "deliverables": [
+        "React+TypeScript+Tailwind CSS前端框架",
+        "FastAPI后端API框架",
+        "PostgreSQL数据库表结构",
+        "Docker容器化环境"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "核心功能开发",
+      "description": "实现用户认证、线索智能生成、AI跟进建议和线索管理面板等核心功能。",
+      "tasks": [
+        "T1",
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "assigned_to": "frontend, backend",
+      "deliverables": [
+        "用户认证模块（注册/登录/角色管理）",
+        "线索智能生成功能",
+        "AI跟进建议生成功能",
+        "线索管理面板（查看/筛选/标记/导出）"
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "管理员功能与集成测试",
+      "description": "开发管理员功能，并进行系统集成测试，确保所有模块协同工作。",
+      "tasks": [
+        "T5"
+      ],
+      "assigned_to": "frontend, backend, testing",
+      "deliverables": [
+        "管理员功能（用户管理/统计/配置）",
+        "集成测试报告"
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "部署与优化",
+      "description": "完成Docker容器化部署，进行性能优化和最终验收。",
+      "tasks": [
+        "T9"
+      ],
+      "assigned_to": "devops, testing",
+      "deliverables": [
+        "Docker部署脚本",
+        "部署文档",
+        "性能测试报告"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "name": "基础设施完成",
+      "phase": 1,
+      "criteria": "前端框架、后端API框架和数据库表结构搭建完成，Docker环境可运行"
+    },
+    {
+      "name": "核心功能完成",
+      "phase": 2,
+      "criteria": "用户认证、线索生成、AI建议和线索管理功能全部实现并通过单元测试"
+    },
+    {
+      "name": "管理员功能完成",
+      "phase": 3,
+      "criteria": "管理员功能开发完成，集成测试通过"
+    },
+    {
+      "name": "部署上线",
+      "phase": 4,
+      "criteria": "系统成功部署到生产环境，通过验收测试"
+    }
+  ],
+  "estimated_effort": "8-10周（约40-50人天）",
+  "parallel_execution": {
+    "phase_1": [
+      "T6",
+      "T7",
+      "T8"
+    ],
+    "phase_2": [
+      "T1",
+      "T2",
+      "T3",
+      "T4"
+    ],
+    "phase_3": [
+      "T5"
+    ],
+    "phase_4": [
+      "T9"
+    ]
+  }
+}
