@@ -7,7 +7,7 @@ const translations: Record<Locale, Translations> = { en }
 
 let currentLocale: Locale = 'en'
 
-export function t(path: string): string {
+export function t(path: string): any {
   const localeData = translations[currentLocale]
   const keys = path.split('.')
   let value: any = localeData
@@ -18,7 +18,7 @@ export function t(path: string): string {
       return path
     }
   }
-  return typeof value === 'string' ? value : path
+  return value
 }
 
 export function setLocale(locale: Locale) {

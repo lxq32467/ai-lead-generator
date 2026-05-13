@@ -245,7 +245,7 @@ function Pricing({ onSelectPlan, apiKey, error }: { onSelectPlan: () => void; ap
             <div className="mb-3"><span className="text-4xl font-bold">{t(`pricing.${plan}.price`)}</span><span className="text-gray-400">/mo</span></div>
             <p className="text-sm text-blue-600 font-semibold mb-4">{t(`pricing.${plan}.leads`)}</p>
             <ul className="space-y-2 mb-8 text-sm text-gray-600">
-              {(t(`pricing.${plan}.features`) as unknown as string[]).map((f: string, i: number) => (
+              {t(`pricing.${plan}.features`).map((f: string, i: number) => (
                 <li key={i} className="flex items-start gap-2"><span className="text-green-500 mt-0.5">&#10003;</span> {f}</li>
               ))}
             </ul>
