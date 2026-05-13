@@ -54,10 +54,15 @@ export default function App() {
 
   async function initAndGo() {
     if (apiKey) { setPage('dashboard'); return }
+    setLoading(true); setError('')
     try {
       const r = await fetch(`${API}/api/leads/init`, { method: 'POST' })
-      if (r.ok) { const d = await r.json(); setApiKey(d.api_key); setPage('dashboard') }
-    } catch (e) { console.error(e) }
+      if (!r.ok) { const e = await r.json(); setError(e.detail || 'Failed to initialize'); return }
+      const d = await r.json()
+      setApiKey(d.api_key)
+      setPage('dashboard')
+    } catch { setError(t('errors.network')) }
+    finally { setLoading(false) }
   }
 
   const loadUsage = useCallback(async (key: string) => {
@@ -112,7 +117,7 @@ export default function App() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       {page === 'landing' && <Landing onCta={() => setPage('pricing')} />}
-      {page === 'pricing' && <Pricing onSelectPlan={() => { initAndGo(); setPage('dashboard') }} apiKey={apiKey} />}
+      {page === 'pricing' && <Pricing onSelectPlan={() => initAndGo()} apiKey={apiKey} error={error} />}
       {page === 'trust' && <TrustPage />}
       {page === 'dashboard' && <Dashboard {...{ apiKey, keyword, setKeyword, industry, setIndustry, location, setLocation, leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport }} />}
       {selected && <DetailModal lead={selected} onClose={() => setSelected(null)} />}
@@ -223,14 +228,15 @@ function Landing({ onCta }: { onCta: () => void }) {
 // ═══════════════════════════════════════════════
 // Pricing v2.1
 // ═══════════════════════════════════════════════
-function Pricing({ onSelectPlan, apiKey }: { onSelectPlan: () => void; apiKey: string }) {
+function Pricing({ onSelectPlan, apiKey, error }: { onSelectPlan: () => void; apiKey: string; error: string }) {
   const plans = ['free', 'pro', 'agency'] as const
   const colors: Record<string, string> = { free: 'border-gray-200', pro: 'border-blue-500 ring-4 ring-blue-100', agency: 'border-purple-300' }
   return (
     <div className="max-w-6xl mx-auto px-4 py-16">
       <h1 className="text-4xl font-bold text-center mb-4">{t('pricing.title')}</h1>
       <p className="text-center text-gray-500 mb-2">{t('pricing.subtitle')}</p>
-      <p className="text-center text-gray-400 text-sm mb-16">{t('pricing.comparison')}</p>
+      <p className="text-center text-gray-400 text-sm mb-8">{t('pricing.comparison')}</p>
+      {error && <div className="max-w-lg mx-auto mb-8 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm text-center">{error}</div>}
       <div className="grid md:grid-cols-3 gap-8">
         {plans.map(plan => (
           <div key={plan} className={`bg-white rounded-2xl shadow-lg border-2 ${colors[plan]} p-8 relative ${plan === 'pro' ? 'scale-105' : ''}`}>
