@@ -44,7 +44,7 @@ export default function App() {
             ['trust', t('common.trust')],
             ['dashboard', t('common.dashboard')],
           ].map(([p, label]) => (
-            <button key={p} onClick={() => p === 'dashboard' && !apiKey ? initAndGo() : goTo(p as Page)}
+            <button type="button" key={p} onClick={() => p === 'dashboard' && !apiKey ? initAndGo() : goTo(p as Page)}
               className={`${page === p ? 'text-blue-600 font-semibold' : 'text-gray-600'} hover:text-blue-600 transition-colors`}>{label}</button>
           ))}
         </nav>
@@ -129,7 +129,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 pt-4">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex justify-between items-center">
             <span>{error}</span>
-            <button onClick={() => setError('')} className="text-red-400 hover:text-red-600 ml-4 font-bold text-lg">&times;</button>
+            <button type="button" onClick={() => setError('')} className="text-red-400 hover:text-red-600 ml-4 font-bold text-lg">&times;</button>
           </div>
         </div>
       )}
@@ -154,7 +154,7 @@ function Landing({ onCta }: { onCta: () => void }) {
           <p className="text-blue-200 text-sm font-semibold tracking-wider uppercase mb-4">AI Sales Intelligence Platform</p>
           <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">{t('landing.hero.title')}</h1>
           <p className="text-xl text-blue-100 max-w-2xl mx-auto mb-10">{t('landing.hero.subtitle')}</p>
-          <button onClick={onCta} className="px-10 py-4 bg-white text-blue-700 rounded-xl font-bold text-lg hover:bg-blue-50 shadow-2xl transition-transform hover:scale-105">{t('landing.hero.cta')}</button>
+          <button type="button" onClick={onCta} className="px-10 py-4 bg-white text-blue-700 rounded-xl font-bold text-lg hover:bg-blue-50 shadow-2xl transition-transform hover:scale-105">{t('landing.hero.cta')}</button>
           <p className="mt-4 text-blue-200 text-sm">{t('landing.hero.secondary')}</p>
         </div>
       </section>
@@ -231,7 +231,7 @@ function Landing({ onCta }: { onCta: () => void }) {
         <div className="max-w-3xl mx-auto px-4">
           <h2 className="text-3xl font-bold mb-4">{t('landing.bottom_cta.title')}</h2>
           <p className="text-blue-100 mb-8 text-lg">{t('landing.bottom_cta.subtitle')}</p>
-          <button onClick={onCta} className="px-10 py-4 bg-white text-blue-700 rounded-xl font-bold text-lg hover:bg-blue-50 shadow-xl transition-transform hover:scale-105">{t('landing.bottom_cta.button')}</button>
+          <button type="button" onClick={onCta} className="px-10 py-4 bg-white text-blue-700 rounded-xl font-bold text-lg hover:bg-blue-50 shadow-xl transition-transform hover:scale-105">{t('landing.bottom_cta.button')}</button>
         </div>
       </section>
 
@@ -267,8 +267,8 @@ function Pricing({ onSelectPlan, apiKey }: { onSelectPlan: () => void; apiKey: s
             </ul>
             {plan === 'agency' ? <div className="w-full py-3 text-center border-2 border-purple-300 rounded-xl font-semibold text-purple-500">{t('pricing.agency.coming_soon')}</div>
               : plan === 'pro' ? (apiKey ? <div className="w-full py-3 text-center bg-green-50 text-green-700 rounded-xl font-semibold">{t('pricing.active')}</div>
-                : <button onClick={onSelectPlan} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">{t('pricing.cta_pro')}</button>)
-              : <button onClick={onSelectPlan} className="w-full py-3 border-2 border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition-colors">{t('pricing.cta_free')}</button>}
+                : <button type="button" onClick={onSelectPlan} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">{t('pricing.cta_pro')}</button>)
+              : <button type="button" onClick={onSelectPlan} className="w-full py-3 border-2 border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition-colors">{t('pricing.cta_free')}</button>}
           </div>
         ))}
       </div>
@@ -344,9 +344,9 @@ function Dashboard(props: any) {
             className="flex-1 min-w-[200px] px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
           <input value={industry} onChange={e => setIndustry(e.target.value)} placeholder={t('dashboard.search.industry_placeholder')} className="w-36 px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
           <input value={location} onChange={e => setLocation(e.target.value)} placeholder={t('dashboard.search.location_placeholder')} className="w-40 px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
-          <button onClick={handleGenerate} className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-colors">{t('dashboard.search.generate_btn')}</button>
-          <button onClick={loadLeads} className="px-4 py-3 border rounded-xl hover:bg-gray-50">{t('dashboard.search.refresh_btn')}</button>
-          <button onClick={handleExport} className="px-4 py-3 border rounded-xl hover:bg-gray-50">{t('dashboard.search.export_btn')}</button>
+          <button type="button" onClick={handleGenerate} className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-colors">{t('dashboard.search.generate_btn')}</button>
+          <button type="button" onClick={loadLeads} className="px-4 py-3 border rounded-xl hover:bg-gray-50">{t('dashboard.search.refresh_btn')}</button>
+          <button type="button" onClick={handleExport} className="px-4 py-3 border rounded-xl hover:bg-gray-50">{t('dashboard.search.export_btn')}</button>
         </div>
         {error && <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>}
       </div>
@@ -395,7 +395,7 @@ function DetailModal({ lead, onClose }: { lead: Lead; onClose: () => void }) {
             <h2 className="text-xl font-bold">{lead.business_name}</h2>
             <p className="text-sm text-gray-500">{lead.industry} &middot; {lead.location}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
         <div className="p-6 space-y-4">
           {lead.revenue_potential && (

@@ -25,7 +25,12 @@
       "Bash(git -C \"D:/claude/ai-team/output\" add render.yaml \"ai-lead-generator/backend/.python-version\")",
       "Bash(git -C D:/claude/ai-team/output commit -m ' *)",
       "Bash(git *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(curl *)",
+      "Bash(sqlite3 \"D:/claude/ai-team/output/ai-lead-generator/.wrangler/state/v3/d1/miniflare-D1DatabaseObject/d7e7dad26bda2eb41e10f2b5b0776873c53023ab37e537e0aca2622a0a57c851.sqlite\" \".tables\")",
+      "Bash(sqlite3 \"D:/claude/ai-team/output/ai-lead-generator/.wrangler/state/v3/d1/miniflare-D1DatabaseObject/e7352547963de7050bd7d94658afc4fe78b61811b7815da12d90be8e863abf4d.sqlite\" \".tables\")",
+      "WebFetch(domain:ai-lead-generator.pages.dev)",
+      "Bash(grep -oP 'VITE_API_URL.{0,50}')"
     ]
   }
 }
