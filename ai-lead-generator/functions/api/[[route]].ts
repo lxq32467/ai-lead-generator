@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
 
-type Env = { DB: D1Database; DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string }
+type Env = { DB: D1Database; DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string; JWT_SECRET: string }
 
 const PLAN_LIMITS: Record<string, number> = { free: 10, pro: 200, agency: 1000 }
 const PLAN_PRICES: Record<string, Record<string, number>> = {
@@ -22,6 +22,17 @@ async function ensureSchema(db: D1Database) {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_leads_category ON leads(lead_category)`),
   ])
+  // v2.2: add auth columns (ignore if exist)
+  for (const col of [
+    `ALTER TABLE users ADD COLUMN email TEXT`,
+    `ALTER TABLE users ADD COLUMN name TEXT`,
+    `ALTER TABLE users ADD COLUMN password_hash TEXT`,
+    `ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`,
+    `ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1`,
+  ]) {
+    try { await db.prepare(col).run() } catch { /* column exists */ }
+  }
+  try { await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`).run() } catch {}
   schemaReady = true
 }
 
@@ -168,19 +179,69 @@ function mockOutreach(lead: any) {
 }
 
 // ── Usage Middleware ──
-async function checkUsage(env: Env, apiKey: string, action: 'lead' | 'message' = 'lead') {
+async function checkUsage(env: Env, userId: string, action: 'lead' | 'message' = 'lead') {
   const db = env.DB
-  let user = await db.prepare('SELECT * FROM users WHERE api_key = ?').bind(apiKey).first()
-  if (!user) return { allowed: false, error: 'Invalid API key', user: null, limit: 0, used_lead: 0 }
+  let user: any = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()
+  if (!user) return { allowed: false, error: 'User not found', user: null, limit: 0, used_lead: 0 }
   const today = todayStr()
-  if ((user as any).usage_date !== today) {
-    await db.prepare('UPDATE users SET daily_lead_count = 0, daily_message_count = 0, usage_date = ? WHERE id = ?').bind(today, (user as any).id).run()
-    ;(user as any).daily_lead_count = 0; (user as any).daily_message_count = 0
+  if (user.usage_date !== today) {
+    await db.prepare('UPDATE users SET daily_lead_count = 0, daily_message_count = 0, usage_date = ? WHERE id = ?').bind(today, user.id).run()
+    user.daily_lead_count = 0; user.daily_message_count = 0
   }
-  const limit = PLAN_LIMITS[(user as any).plan] || 10
-  if (action === 'lead' && (user as any).daily_lead_count >= limit) return { allowed: false, error: `Daily lead limit reached (${limit}/${(user as any).plan})`, user, limit, used_lead: (user as any).daily_lead_count }
-  await db.prepare(`UPDATE users SET daily_lead_count = daily_lead_count + 1, total_lead_count = total_lead_count + 1 WHERE id = ?`).bind((user as any).id).run()
-  return { allowed: true, user, limit, used_lead: (user as any).daily_lead_count + 1 }
+  const limit = PLAN_LIMITS[user.plan] || 10
+  if (action === 'lead' && user.daily_lead_count >= limit) return { allowed: false, error: `Daily lead limit reached (${limit}/${user.plan})`, user, limit, used_lead: user.daily_lead_count }
+  await db.prepare(`UPDATE users SET daily_lead_count = daily_lead_count + 1, total_lead_count = total_lead_count + 1 WHERE id = ?`).bind(user.id).run()
+  return { allowed: true, user, limit, used_lead: user.daily_lead_count + 1 }
+}
+
+// ── JWT Utilities (Web Crypto) ──
+function base64url(buf: ArrayBuffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+async function jwtSign(payload: Record<string, unknown>, secret: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const header = base64url(encoder.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
+  const body = base64url(encoder.encode(JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000) })))
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = base64url(await crypto.subtle.sign('HMAC', key, encoder.encode(`${header}.${body}`)))
+  return `${header}.${body}.${sig}`
+}
+async function jwtVerify(token: string, secret: string): Promise<Record<string, unknown> | null> {
+  try {
+    const [header, body, sig] = token.split('.')
+    const encoder = new TextEncoder()
+    const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+    const ok = await crypto.subtle.verify('HMAC', key, base64urlToBuf(sig), encoder.encode(`${header}.${body}`))
+    if (!ok) return null
+    return JSON.parse(new TextDecoder().decode(base64urlToBuf(body)))
+  } catch { return null }
+}
+function base64urlToBuf(s: string) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/')
+  while (s.length % 4) s += '='
+  const binary = atob(s)
+  const buf = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i)
+  return buf.buffer
+}
+
+// ── Password Hashing (SHA-256 + salt) ──
+function randomSalt() { return crypto.randomUUID().replace(/-/g, '') }
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomSalt()
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password + salt))
+  return `${salt}:${Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')}`
+}
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [salt, hash] = stored.split(':')
+  const computed = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password + salt))
+  const computedHex = Array.from(new Uint8Array(computed)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return computedHex === hash
+}
+
+// ── Auth Helpers ──
+function userResponse(u: any) {
+  return { id: u.id, email: u.email, name: u.name, plan: u.plan, role: u.role, is_active: !!u.is_active, api_key: u.api_key }
 }
 
 // ── Migration middleware ──
@@ -189,20 +250,63 @@ app.use('/api/*', async (c, next) => {
   await next()
 })
 
-// ── Routes ──
+// ── Auth Middleware ──
+const authMiddleware = async (c: any, next: any) => {
+  const auth = c.req.header('Authorization') || ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  if (!token) return c.json({ detail: 'Missing authorization token' }, 401)
+  const payload = await jwtVerify(token, c.env.JWT_SECRET || 'dev-secret-change-me')
+  if (!payload) return c.json({ detail: 'Invalid or expired token' }, 401)
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.sub).first()
+  if (!user || !(user as any).is_active) return c.json({ detail: 'User not found or disabled' }, 401)
+  c.set('user', user)
+  await next()
+}
 
-// POST /api/leads/init
-app.post('/api/leads/init', async (c) => {
+// ── Auth Routes ──
+
+app.post('/api/auth/register', async (c) => {
+  const { email, name, password } = await c.req.json().catch(() => ({}))
+  if (!email || !password || password.length < 6) return c.json({ detail: 'Email and password (min 6 chars) required' }, 400)
   const db = c.env.DB
+  const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first()
+  if (existing) return c.json({ detail: 'Email already registered' }, 400)
   const id = crypto.randomUUID()
   const apiKey = crypto.randomUUID().replace(/-/g, '')
-  await db.prepare('INSERT INTO users (id, api_key, plan, subscription_status, usage_date) VALUES (?, ?, ?, ?, ?)').bind(id, apiKey, 'pro', 'active', todayStr()).run()
-  return c.json({ api_key: apiKey, plan: 'pro', message: 'Use this API key in all requests' })
+  const hash = await hashPassword(password)
+  await db.prepare(`INSERT INTO users (id, api_key, email, name, password_hash, plan, role, is_active, subscription_status, usage_date) VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(id, apiKey, email, name || email.split('@')[0], hash, 'pro', 'user', 1, 'active', todayStr()).run()
+  const token = await jwtSign({ sub: id, role: 'user' }, c.env.JWT_SECRET || 'dev-secret-change-me')
+  return c.json({ token, user: { id, email, name: name || email.split('@')[0], plan: 'pro', role: 'user' } })
+})
+
+app.post('/api/auth/login', async (c) => {
+  const { email, password } = await c.req.json().catch(() => ({}))
+  if (!email || !password) return c.json({ detail: 'Email and password required' }, 400)
+  const db = c.env.DB
+  const user: any = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first()
+  if (!user || !user.password_hash) return c.json({ detail: 'Invalid credentials' }, 401)
+  if (!user.is_active) return c.json({ detail: 'Account disabled' }, 403)
+  const ok = await verifyPassword(password, user.password_hash)
+  if (!ok) return c.json({ detail: 'Invalid credentials' }, 401)
+  const token = await jwtSign({ sub: user.id, role: user.role || 'user' }, c.env.JWT_SECRET || 'dev-secret-change-me')
+  return c.json({ token, user: userResponse(user) })
+})
+
+app.get('/api/auth/me', authMiddleware, (c) => {
+  return c.json({ user: userResponse(c.get('user')) })
+})
+
+// ── Protected Routes (auth required) ──
+
+// POST /api/leads/init
+app.post('/api/leads/init', authMiddleware, (c) => {
+  const u = c.get('user')
+  return c.json({ api_key: u.api_key, plan: u.plan, message: 'Use this API key in all requests', user: userResponse(u) })
 })
 
 // POST /api/leads/generate
-app.post('/api/leads/generate', async (c) => {
-  const apiKey = c.req.query('api_key') || ''
+app.post('/api/leads/generate', authMiddleware, async (c) => {
+  const user: any = c.get('user')
   const keyword = c.req.query('keyword') || ''
   const industry = c.req.query('industry') || 'Technology'
   const location = c.req.query('location') || 'USA'
@@ -210,14 +314,10 @@ app.post('/api/leads/generate', async (c) => {
 
   if (!keyword.trim()) return c.json({ detail: 'Keyword is required' }, 400)
 
-  const usage = await checkUsage(c.env, apiKey, 'lead')
+  const usage = await checkUsage(c.env, user.id, 'lead')
   if (!usage.allowed) return c.json({ detail: usage.error }, 429)
 
-  const user: any = usage.user
-
-  // Layer 1: Generate
   const leadsData: any[] = await generateLeads(c.env, keyword, industry, location, limit)
-  // Batch outreach
   const outreachResults: any[] = await generateOutreachBatch(c.env, leadsData)
 
   const db = c.env.DB
@@ -275,16 +375,13 @@ app.post('/api/leads/generate', async (c) => {
 })
 
 // GET /api/leads/
-app.get('/api/leads', async (c) => {
-  const apiKey = c.req.query('api_key') || ''
+app.get('/api/leads', authMiddleware, async (c) => {
+  const user: any = c.get('user')
   const page = parseInt(c.req.query('page') || '1')
   const limit = Math.min(parseInt(c.req.query('limit') || '20'), 100)
   const category = c.req.query('lead_category') || ''
 
   const db = c.env.DB
-  const user = await db.prepare('SELECT * FROM users WHERE api_key = ?').bind(apiKey).first() as any
-  if (!user) return c.json({ detail: 'Invalid API key' }, 404)
-
   let query = 'SELECT * FROM leads WHERE user_id = ?'
   const params: any[] = [user.id]
   if (category) { query += ' AND lead_category = ?'; params.push(category) }
@@ -295,11 +392,9 @@ app.get('/api/leads', async (c) => {
 })
 
 // GET /api/leads/kpi
-app.get('/api/leads/kpi', async (c) => {
-  const apiKey = c.req.query('api_key') || ''
+app.get('/api/leads/kpi', authMiddleware, async (c) => {
+  const user: any = c.get('user')
   const db = c.env.DB
-  const user: any = await db.prepare('SELECT * FROM users WHERE api_key = ?').bind(apiKey).first()
-  if (!user) return c.json({ detail: 'Invalid API key' }, 404)
   const leads: any[] = (await db.prepare('SELECT * FROM leads WHERE user_id = ?').bind(user.id).all()).results
   const highIntent = leads.filter(l => l.lead_score >= 70)
   const totalRev = highIntent.reduce((s, l) => s + 500 + l.lead_score * 20, 0)
@@ -312,7 +407,7 @@ app.get('/api/leads/kpi', async (c) => {
 })
 
 // GET /api/leads/:lead_id
-app.get('/api/leads/:lead_id', async (c) => {
+app.get('/api/leads/:lead_id', authMiddleware, async (c) => {
   const leadId = c.req.param('lead_id')
   const db = c.env.DB
   const lead: any = await db.prepare('SELECT * FROM leads WHERE id = ?').bind(leadId).first()
@@ -322,11 +417,9 @@ app.get('/api/leads/:lead_id', async (c) => {
 })
 
 // POST /api/leads/export
-app.post('/api/leads/export', async (c) => {
-  const apiKey = c.req.query('api_key') || ''
+app.post('/api/leads/export', authMiddleware, async (c) => {
+  const user: any = c.get('user')
   const db = c.env.DB
-  const user: any = await db.prepare('SELECT * FROM users WHERE api_key = ?').bind(apiKey).first()
-  if (!user) return c.json({ detail: 'Invalid API key' }, 404)
   const leads: any[] = (await db.prepare('SELECT * FROM leads WHERE user_id = ? ORDER BY lead_score DESC').bind(user.id).all()).results
   const header = 'Business,Industry,Location,Channel,Contact,Score,Category,Est. Revenue ($),Buying Intent,Email Outreach,LinkedIn Outreach,Instagram Outreach\n'
   const rows = leads.map(l => {
@@ -376,12 +469,10 @@ app.post('/api/create-checkout-session', async (c) => {
 app.post('/api/webhook/payment', (c) => c.json({ received: true, status: 'ok' }))
 app.get('/api/webhook/payment', (c) => c.json({ status: 'Webhook endpoint ready', version: '2.1.0' }))
 
-// GET /api/usage/:api_key
-app.get('/api/usage/:api_key', async (c) => {
-  const apiKey = c.req.param('api_key')
+// GET /api/usage
+app.get('/api/usage', authMiddleware, async (c) => {
+  const user: any = c.get('user')
   const db = c.env.DB
-  const user: any = await db.prepare('SELECT * FROM users WHERE api_key = ?').bind(apiKey).first()
-  if (!user) return c.json({ detail: 'User not found' }, 404)
   const today = todayStr()
   if (user.usage_date !== today) {
     await db.prepare('UPDATE users SET daily_lead_count = 0, daily_message_count = 0, usage_date = ? WHERE id = ?').bind(today, user.id).run()
@@ -392,13 +483,11 @@ app.get('/api/usage/:api_key', async (c) => {
   return c.json({ plan: user.plan, subscription_status: user.subscription_status, daily: { leads_used: user.daily_lead_count, leads_limit: limit, messages_used: user.daily_message_count, remaining: Math.max(0, limit - user.daily_lead_count) }, total: { leads_generated: total, since: user.created_at } })
 })
 
-// GET /api/usage/:api_key/logs
-app.get('/api/usage/:api_key/logs', async (c) => {
-  const apiKey = c.req.param('api_key')
+// GET /api/usage/logs
+app.get('/api/usage/logs', authMiddleware, async (c) => {
+  const user: any = c.get('user')
   const limit = Math.min(parseInt(c.req.query('limit') || '20'), 100)
   const db = c.env.DB
-  const user: any = await db.prepare('SELECT * FROM users WHERE api_key = ?').bind(apiKey).first()
-  if (!user) return c.json({ detail: 'User not found' }, 404)
   const leads: any[] = (await db.prepare('SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC LIMIT ?').bind(user.id, limit).all()).results
   return c.json({ logs: leads.map(l => ({ business_name: l.business_name, lead_score: l.lead_score, lead_category: l.lead_category, created_at: l.created_at })) })
 })

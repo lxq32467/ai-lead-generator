@@ -3,7 +3,12 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   api_key TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE,
+  name TEXT,
+  password_hash TEXT,
   plan TEXT NOT NULL DEFAULT 'free',
+  role TEXT DEFAULT 'user',
+  is_active INTEGER DEFAULT 1,
   subscription_status TEXT DEFAULT 'active',
   daily_lead_count INTEGER DEFAULT 0,
   daily_message_count INTEGER DEFAULT 0,
@@ -11,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   usage_date TEXT DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 CREATE TABLE IF NOT EXISTS leads (
   id TEXT PRIMARY KEY,

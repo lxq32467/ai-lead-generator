@@ -12,13 +12,17 @@ interface Lead {
   revenue_potential?: { low: number; high: number; estimated: number; currency: string };
   ai_suggestion?: string;
 }
+interface UserInfo { id: string; email: string; name: string; plan: string; role: string; api_key: string }
 interface KPI { leads_today: number; total_leads: number; high_intent_leads: number; estimated_revenue_potential: number; conversion_probability: number; plan: string; limit: number }
 interface Usage { plan: string; daily: { leads_used: number; leads_limit: number; remaining: number; messages_used: number } }
-type Page = 'landing' | 'pricing' | 'dashboard' | 'trust'
+type Page = 'landing' | 'pricing' | 'dashboard' | 'trust' | 'login'
+
+function authHeaders(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
 
 export default function App() {
   const [page, setPage] = useState<Page>('landing')
-  const [apiKey, setApiKey] = useState('')
+  const [token, setToken] = useState(() => { try { return localStorage.getItem('token') || '' } catch { return '' } })
+  const [user, setUser] = useState<UserInfo | null>(null)
   const [leads, setLeads] = useState<Lead[]>([])
   const [usage, setUsage] = useState<Usage | null>(null)
   const [kpi, setKpi] = useState<KPI | null>(null)
@@ -28,6 +32,9 @@ export default function App() {
   const [keyword, setKeyword] = useState('')
   const [industry, setIndustry] = useState('Technology')
   const [location, setLocation] = useState('United States')
+
+  function saveToken(t: string, u: UserInfo) { setToken(t); setUser(u); try { localStorage.setItem('token', t) } catch {} }
+  function logout() { setToken(''); setUser(null); try { localStorage.removeItem('token') } catch {}; setPage('landing'); setError('') }
 
   // ── Header ──
   const Header = () => (
@@ -44,29 +51,33 @@ export default function App() {
             ['trust', t('common.trust')],
             ['dashboard', t('common.dashboard')],
           ].map(([p, label]) => (
-            <button type="button" key={p} onClick={() => p === 'dashboard' && !apiKey ? initAndGo() : goTo(p as Page)}
+            <button type="button" key={p} onClick={() => p === 'dashboard' && !token ? requireAuth() && initAndGo() : goTo(p as Page)}
               className={`${page === p ? 'text-blue-600 font-semibold' : 'text-gray-600'} hover:text-blue-600 transition-colors`}>{label}</button>
           ))}
+          {user ? (
+            <div className="flex items-center gap-3 ml-4 pl-4 border-l">
+              <span className="text-xs text-gray-500">{user.name}</span>
+              <button type="button" onClick={logout} className="text-xs text-red-500 hover:text-red-700">{t('common.logout')}</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => goTo('login')} className="text-sm text-blue-600 hover:text-blue-700 ml-4 pl-4 border-l">
+              {t('common.signin')}
+            </button>
+          )}
         </nav>
       </div>
     </header>
   )
 
+  function requireAuth() {
+    if (token && user) return true
+    setPage('login')
+    return false
+  }
+
   async function initAndGo() {
-    if (apiKey) { setPage('dashboard'); return }
-    setLoading(true); setError('')
-    try {
-      const r = await fetch(`${API}/api/leads/init`, { method: 'POST' })
-      if (!r.ok) {
-        let msg = `Server error (${r.status})`
-        try { const e = await r.json(); msg = e.detail || msg } catch {}
-        setError(msg); return
-      }
-      const d = await r.json()
-      setApiKey(d.api_key)
-      setPage('dashboard')
-    } catch (e: any) { setError(e?.message || t('errors.network')) }
-    finally { setLoading(false) }
+    if (token && user) { setPage('dashboard'); return }
+    setPage('login')
   }
 
   function goTo(p: Page) {
@@ -74,41 +85,42 @@ export default function App() {
     setPage(p)
   }
 
-  const loadUsage = useCallback(async (key: string) => {
+  const loadUsage = useCallback(async () => {
+    if (!token) return
     try {
       const [uR, kR] = await Promise.all([
-        fetch(`${API}/api/usage/${key}`),
-        fetch(`${API}/api/leads/kpi?api_key=${key}`),
+        fetch(`${API}/api/usage`, { headers: authHeaders(token) }),
+        fetch(`${API}/api/leads/kpi`, { headers: authHeaders(token) }),
       ])
       if (uR.ok) setUsage(await uR.json())
       if (kR.ok) setKpi(await kR.json())
     } catch (e) { console.error(e) }
-  }, [])
+  }, [token])
 
-  useEffect(() => { if (apiKey && page === 'dashboard') loadUsage(apiKey) }, [page, apiKey, loadUsage])
+  useEffect(() => { if (token && page === 'dashboard') loadUsage() }, [page, token, loadUsage])
 
   async function handleGenerate() {
-    if (!keyword.trim()) return
+    if (!keyword.trim() || !token) return
     setLoading(true); setError('')
     try {
-      const p = new URLSearchParams({ api_key: apiKey, keyword, industry, location, limit: '10' })
-      const r = await fetch(`${API}/api/leads/generate?${p}`, { method: 'POST' })
+      const p = new URLSearchParams({ keyword, industry, location, limit: '10' })
+      const r = await fetch(`${API}/api/leads/generate?${p}`, { method: 'POST', headers: authHeaders(token) })
       if (!r.ok) { const e = await r.json(); setError(e.detail || 'Generation failed'); return }
       const d = await r.json()
       setLeads(d.leads)
       if (d.kpi) setKpi(d.kpi)
-      loadUsage(apiKey)
+      loadUsage()
     } catch { setError(t('errors.network')) }
     finally { setLoading(false) }
   }
 
   async function loadLeads() {
-    const r = await fetch(`${API}/api/leads/?api_key=${apiKey}`)
+    const r = await fetch(`${API}/api/leads`, { headers: authHeaders(token) })
     if (r.ok) setLeads((await r.json()).leads)
   }
 
   async function handleExport() {
-    const r = await fetch(`${API}/api/leads/export?api_key=${apiKey}`, { method: 'POST' })
+    const r = await fetch(`${API}/api/leads/export`, { method: 'POST', headers: authHeaders(token) })
     const b = await r.blob(); const url = URL.createObjectURL(b)
     const a = document.createElement('a'); a.href = url; a.download = 'leads.csv'; a.click()
   }
@@ -134,9 +146,10 @@ export default function App() {
         </div>
       )}
       {page === 'landing' && <Landing onCta={() => goTo('pricing')} />}
-      {page === 'pricing' && <Pricing onSelectPlan={() => initAndGo()} apiKey={apiKey} />}
+      {page === 'pricing' && <Pricing onSelectPlan={() => initAndGo()} />}
       {page === 'trust' && <TrustPage />}
-      {page === 'dashboard' && <Dashboard {...{ apiKey, keyword, setKeyword, industry, setIndustry, location, setLocation, leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport }} />}
+      {page === 'login' && <LoginPage onSuccess={(tkn: string, u: UserInfo) => { saveToken(tkn, u); goTo('dashboard') }} />}
+      {page === 'dashboard' && token && <Dashboard {...{ keyword, setKeyword, industry, setIndustry, location, setLocation, leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport, user }} />}
       {selected && <DetailModal lead={selected} onClose={() => setSelected(null)} />}
     </div>
   )
@@ -245,7 +258,7 @@ function Landing({ onCta }: { onCta: () => void }) {
 // ═══════════════════════════════════════════════
 // Pricing v2.1
 // ═══════════════════════════════════════════════
-function Pricing({ onSelectPlan, apiKey }: { onSelectPlan: () => void; apiKey: string }) {
+function Pricing({ onSelectPlan }: { onSelectPlan: () => void }) {
   const plans = ['free', 'pro', 'agency'] as const
   const colors: Record<string, string> = { free: 'border-gray-200', pro: 'border-blue-500 ring-4 ring-blue-100', agency: 'border-purple-300' }
   return (
@@ -266,9 +279,7 @@ function Pricing({ onSelectPlan, apiKey }: { onSelectPlan: () => void; apiKey: s
               ))}
             </ul>
             {plan === 'agency' ? <div className="w-full py-3 text-center border-2 border-purple-300 rounded-xl font-semibold text-purple-500">{t('pricing.agency.coming_soon')}</div>
-              : plan === 'pro' ? (apiKey ? <div className="w-full py-3 text-center bg-green-50 text-green-700 rounded-xl font-semibold">{t('pricing.active')}</div>
-                : <button type="button" onClick={onSelectPlan} className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors">{t('pricing.cta_pro')}</button>)
-              : <button type="button" onClick={onSelectPlan} className="w-full py-3 border-2 border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition-colors">{t('pricing.cta_free')}</button>}
+              : <button type="button" onClick={onSelectPlan} className={`w-full py-3 rounded-xl font-semibold transition-colors ${plan === 'pro' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border-2 border-gray-300 hover:bg-gray-50'}`}>{plan === 'pro' ? t('pricing.cta_pro') : t('pricing.cta_free')}</button>}
           </div>
         ))}
       </div>
@@ -297,11 +308,84 @@ function TrustPage() {
 }
 
 // ═══════════════════════════════════════════════
+// Login Page v2.2
+// ═══════════════════════════════════════════════
+function LoginPage({ onSuccess }: { onSuccess: (token: string, user: UserInfo) => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('register')
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [password, setPassword] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit() {
+    if (!email || !password) { setErr('Please fill all required fields'); return }
+    if (mode === 'register' && password.length < 6) { setErr('Password must be at least 6 characters'); return }
+    setBusy(true); setErr('')
+    try {
+      const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
+      const body: any = { email, password }
+      if (mode === 'register') body.name = name || email.split('@')[0]
+      const r = await fetch(`${API}${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.detail || 'Request failed'); return }
+      onSuccess(d.token, d.user)
+    } catch { setErr(t('errors.network')) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-16">
+      <div className="bg-white rounded-2xl shadow-lg p-8">
+        {/* Tabs */}
+        <div className="flex mb-8 bg-gray-100 rounded-lg p-1">
+          <button type="button" onClick={() => { setMode('register'); setErr('') }}
+            className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'register' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
+            {t('auth.register')}
+          </button>
+          <button type="button" onClick={() => { setMode('login'); setErr('') }}
+            className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${mode === 'login' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>
+            {t('auth.login')}
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-4">
+          {mode === 'register' && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">{t('auth.name')}</label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder="John" className="w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">{t('auth.email')}</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="you@example.com" className="w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">{t('auth.password')}</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              placeholder="••••••••" className="w-full px-4 py-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {err && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{err}</div>}
+          <button type="button" onClick={handleSubmit} disabled={busy}
+            className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            {busy ? t('auth.registering') : mode === 'register' ? t('auth.register_btn') : t('auth.login_btn')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════
 // Dashboard v2.1 — KPI + Revenue Simulation
 // ═══════════════════════════════════════════════
 function Dashboard(props: any) {
-  const { apiKey, keyword, setKeyword, industry, setIndustry, location, setLocation,
-    leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport } = props
+  const { keyword, setKeyword, industry, setIndustry, location, setLocation,
+    leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport, user } = props
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* KPI Cards */}
@@ -327,7 +411,7 @@ function Dashboard(props: any) {
         <div className="bg-white rounded-xl shadow p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <span className="font-bold">{usage.plan.toUpperCase()}</span>
-            <span className="text-xs text-gray-400">{apiKey.slice(0, 16)}...</span>
+            <span className="text-xs text-gray-400">{user?.email}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm"><strong>{usage.daily.leads_used}/{usage.daily.leads_limit}</strong> <span className="text-gray-400">{t('dashboard.usage_label')}</span></span>
