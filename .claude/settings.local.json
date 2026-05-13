@@ -17,7 +17,15 @@
       "Bash(python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir backend)",
       "Bash(curl -s http://localhost:8000/health)",
       "Bash(curl -s http://localhost:8000/)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git reset *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(npx wrangler *)",
+      "Bash(git -C \"D:/claude/ai-team/output\" add render.yaml \"ai-lead-generator/backend/.python-version\")",
+      "Bash(git -C D:/claude/ai-team/output commit -m ' *)",
+      "Bash(git *)",
+      "Bash(npm install *)"
     ]
   }
 }

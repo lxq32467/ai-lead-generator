@@ -1,0 +1,14 @@
+name = "leadgen"
+compatibility_date = "2025-05-14"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "leadgen-db"
+database_id = ""
+
+[vars]
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+[env.production]
+vars = { DEEPSEEK_API_KEY = "" }
