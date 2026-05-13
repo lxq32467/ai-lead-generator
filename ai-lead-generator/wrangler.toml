@@ -9,6 +9,3 @@ database_id = "01a4ed37-8f14-4609-acfd-5b3e4f727788"
 
 [vars]
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-
-[env.production]
-vars = { DEEPSEEK_API_KEY = "" }
