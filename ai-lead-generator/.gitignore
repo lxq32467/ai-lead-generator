@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Environment
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+
+# Database
+*.db
+
+# IDE
+.vs/
+.idea/

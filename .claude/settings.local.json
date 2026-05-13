@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\claude\\\\ai-team\\\\output\" -Depth 1)",
+      "Bash(Select-Object Name, LastWriteTime)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Get-ChildItem -Path \"D:\\\\claude\\\\ai-team\\\\output\" -Recurse -Depth 3)",
+      "Bash(Select-Object FullName, Length, LastWriteTime)",
+      "Bash(Format-List)",
+      "Bash(npm run *)",
+      "Bash(npx vite *)",
+      "Bash(pip install *)",
+      "Bash(python3 -m pip install -r \"D:/claude/ai-team/output/ai-lead-generator/backend/requirements.txt\" -q)",
+      "Read(//c//**)",
+      "Read(//c/Program Files/**)",
+      "Bash(python -m pip install -r \"D:/claude/ai-team/output/ai-lead-generator/backend/requirements.txt\" -q)",
+      "Bash(python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --app-dir backend)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(git add *)"
+    ]
+  }
+}
