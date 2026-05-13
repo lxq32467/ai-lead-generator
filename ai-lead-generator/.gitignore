@@ -18,6 +18,9 @@ __pycache__/
 # Database
 *.db
 
+# Wrangler temp files
+.wrangler/
+
 # IDE
 .vs/
 .idea/
