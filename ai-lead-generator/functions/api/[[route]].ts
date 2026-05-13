@@ -12,6 +12,19 @@ const PLAN_PRICES: Record<string, Record<string, number>> = {
 
 const app = new Hono<{ Bindings: Env }>()
 
+// ── Auto-migration (like FastAPI's Base.metadata.create_all) ──
+let schemaReady = false
+async function ensureSchema(db: D1Database) {
+  if (schemaReady) return
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, api_key TEXT UNIQUE NOT NULL, plan TEXT NOT NULL DEFAULT 'free', subscription_status TEXT DEFAULT 'active', daily_lead_count INTEGER DEFAULT 0, daily_message_count INTEGER DEFAULT 0, total_lead_count INTEGER DEFAULT 0, usage_date TEXT DEFAULT '', created_at TEXT NOT NULL DEFAULT (datetime('now')))`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS leads (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, business_name TEXT NOT NULL, industry TEXT, location TEXT, contact_channel TEXT, contact_info TEXT, lead_score INTEGER DEFAULT 50, buying_intent_reason TEXT, outreach_strategy TEXT, outreach_email TEXT, outreach_instagram TEXT, outreach_linkedin TEXT, best_channel TEXT, lead_category TEXT DEFAULT 'warm', region_competition_score INTEGER DEFAULT 50, source TEXT DEFAULT 'ai_generated', status TEXT DEFAULT 'new', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_leads_category ON leads(lead_category)`),
+  ])
+  schemaReady = true
+}
+
 // ── Helpers ──
 function todayStr() { return new Date().toISOString().slice(0, 10) }
 
@@ -169,6 +182,12 @@ async function checkUsage(env: Env, apiKey: string, action: 'lead' | 'message' =
   await db.prepare(`UPDATE users SET daily_lead_count = daily_lead_count + 1, total_lead_count = total_lead_count + 1 WHERE id = ?`).bind((user as any).id).run()
   return { allowed: true, user, limit, used_lead: (user as any).daily_lead_count + 1 }
 }
+
+// ── Migration middleware ──
+app.use('/api/*', async (c, next) => {
+  await ensureSchema(c.env.DB)
+  await next()
+})
 
 // ── Routes ──
 

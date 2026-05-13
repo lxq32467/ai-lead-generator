@@ -5,7 +5,7 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "leadgen-db"
-database_id = ""
+database_id = "local-dev"
 
 [vars]
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
