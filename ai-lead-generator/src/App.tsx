@@ -250,6 +250,11 @@ function Landing({ onCta }: { onCta: () => void }) {
 
       <footer className="bg-gray-900 text-gray-400 py-8 text-center text-sm">
         <p>&copy; 2026 LeadGen — AI Sales Intelligence Platform. All rights reserved.</p>
+        <div className="flex justify-center gap-6 mt-3">
+          <a href="/terms.html" className="hover:text-white transition-colors">Terms of Service</a>
+          <a href="/privacy.html" className="hover:text-white transition-colors">Privacy Policy</a>
+          <a href="/refund.html" className="hover:text-white transition-colors">Refund Policy</a>
+        </div>
       </footer>
     </div>
   )
