@@ -149,7 +149,7 @@ export default function App() {
       {page === 'pricing' && <Pricing onSelectPlan={() => initAndGo()} />}
       {page === 'trust' && <TrustPage />}
       {page === 'login' && <LoginPage onSuccess={(tkn: string, u: UserInfo) => { saveToken(tkn, u); goTo('dashboard') }} />}
-      {page === 'dashboard' && token && <Dashboard {...{ keyword, setKeyword, industry, setIndustry, location, setLocation, leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport, user }} />}
+      {page === 'dashboard' && token && <Dashboard {...{ keyword, setKeyword, industry, setIndustry, location, setLocation, leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport, user, token }} />}
       {selected && <DetailModal lead={selected} onClose={() => setSelected(null)} />}
     </div>
   )
@@ -266,12 +266,27 @@ function Landing({ onCta }: { onCta: () => void }) {
 function Pricing({ onSelectPlan }: { onSelectPlan: () => void }) {
   const plans = ['free', 'pro', 'agency'] as const
   const colors: Record<string, string> = { free: 'border-gray-200', pro: 'border-blue-500 ring-4 ring-blue-100', agency: 'border-purple-300' }
+  const [showCrypto, setShowCrypto] = useState(false)
+  const [cAddress, setCAddress] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  async function loadCrypto() {
+    setShowCrypto(!showCrypto)
+    if (!showCrypto) {
+      try { const r = await fetch(`${API}/api/crypto/wallet`); if (r.ok) { const d = await r.json(); setCAddress(d.address) } } catch {}
+    }
+  }
+
+  function copyAddress() {
+    if (cAddress) { navigator.clipboard.writeText(cAddress); setCopied(true); setTimeout(() => setCopied(false), 2000) }
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-16">
       <h1 className="text-4xl font-bold text-center mb-4">{t('pricing.title')}</h1>
       <p className="text-center text-gray-500 mb-2">{t('pricing.subtitle')}</p>
       <p className="text-center text-gray-400 text-sm mb-16">{t('pricing.comparison')}</p>
-      <div className="grid md:grid-cols-3 gap-8">
+      <div className="grid md:grid-cols-3 gap-8 mb-12">
         {plans.map(plan => (
           <div key={plan} className={`bg-white rounded-2xl shadow-lg border-2 ${colors[plan]} p-8 relative ${plan === 'pro' ? 'scale-105' : ''}`}>
             {plan === 'pro' && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white px-5 py-1 rounded-full text-xs font-bold">BEST VALUE</div>}
@@ -287,6 +302,23 @@ function Pricing({ onSelectPlan }: { onSelectPlan: () => void }) {
               : <button type="button" onClick={onSelectPlan} className={`w-full py-3 rounded-xl font-semibold transition-colors ${plan === 'pro' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border-2 border-gray-300 hover:bg-gray-50'}`}>{plan === 'pro' ? t('pricing.cta_pro') : t('pricing.cta_free')}</button>}
           </div>
         ))}
+      </div>
+      {/* Crypto Payment */}
+      <div className="max-w-lg mx-auto">
+        <button type="button" onClick={loadCrypto} className="w-full py-3 border-2 border-dashed border-amber-400 rounded-xl text-amber-600 font-semibold hover:bg-amber-50 transition-colors text-sm">
+          {showCrypto ? 'Hide Crypto Payment' : 'Pay with USDT (Crypto) '}
+        </button>
+        {showCrypto && (
+          <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-6 border border-amber-200">
+            <p className="font-bold text-amber-800 mb-2">USDT-TRC20 Payment</p>
+            <p className="text-xs text-amber-600 mb-4">Send exactly <strong>$29 USDT</strong> via TRC20 network, then redeem your TXID on the Dashboard.</p>
+            <div className="flex items-center gap-2 mb-3">
+              <input value={cAddress} readOnly className="flex-1 text-xs bg-white border rounded-lg px-3 py-2 text-gray-600 truncate" />
+              <button type="button" onClick={copyAddress} className="px-3 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 whitespace-nowrap">{copied ? 'Copied!' : 'Copy'}</button>
+            </div>
+            <p className="text-xs text-amber-500">After payment, go to Dashboard and enter your TXID to upgrade instantly.</p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -386,11 +418,44 @@ function LoginPage({ onSuccess }: { onSuccess: (token: string, user: UserInfo) =
 }
 
 // ═══════════════════════════════════════════════
+// Crypto Redeem v2.2
+// ═══════════════════════════════════════════════
+function RedeemBox({ token: tk, onUpgrade }: { token: string; onUpgrade: () => void }) {
+  const [txid, setTxid] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function redeem() {
+    if (!txid.trim()) { setMsg('Please enter your transaction ID'); return }
+    setBusy(true); setMsg('')
+    try {
+      const r = await fetch(`${API}/api/crypto/redeem`, { method: 'POST', headers: authHeaders(tk), body: JSON.stringify({ txid: txid.trim() }) })
+      const d = await r.json()
+      if (r.ok) { setMsg(d.message); setTimeout(onUpgrade, 1500) }
+      else setMsg(d.detail || 'Failed')
+    } catch { setMsg('Network error') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-5 mb-6">
+      <p className="font-bold text-amber-800 mb-1">Upgrade to Pro with USDT</p>
+      <p className="text-xs text-amber-600 mb-3">Already sent $29 USDT via TRC20? Paste your transaction ID (TXID) below to upgrade instantly.</p>
+      <div className="flex gap-2">
+        <input value={txid} onChange={e => setTxid(e.target.value)} placeholder="TXID from your wallet" className="flex-1 text-sm px-3 py-2 border border-amber-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500" />
+        <button type="button" onClick={redeem} disabled={busy} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap">Upgrade</button>
+      </div>
+      {msg && <p className={`text-xs mt-2 ${msg.includes('upgraded') || msg.includes('success') ? 'text-green-600' : 'text-red-600'}`}>{msg}</p>}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════
 // Dashboard v2.1 — KPI + Revenue Simulation
 // ═══════════════════════════════════════════════
 function Dashboard(props: any) {
   const { keyword, setKeyword, industry, setIndustry, location, setLocation,
-    leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport, user } = props
+    leads, usage, kpi, error, handleGenerate, selected, setSelected, loadLeads, handleExport, user, token } = props
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* KPI Cards */}
@@ -424,6 +489,9 @@ function Dashboard(props: any) {
           </div>
         </div>
       )}
+
+      {/* Redeem Crypto Upgrade */}
+      {user && user.plan === 'free' && <RedeemBox token={props.token} onUpgrade={() => window.location.reload()} />}
 
       {/* Search + Actions */}
       <div className="bg-white rounded-xl shadow p-6 mb-6">

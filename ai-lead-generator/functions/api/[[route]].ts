@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { handle } from 'hono/cloudflare-pages'
 
-type Env = { DB: D1Database; DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string; JWT_SECRET: string }
+type Env = { DB: D1Database; DEEPSEEK_API_KEY: string; DEEPSEEK_BASE_URL: string; JWT_SECRET: string; CRYPTO_ADDRESS: string }
 
 const PLAN_LIMITS: Record<string, number> = { free: 10, pro: 200, agency: 1000 }
 const PLAN_PRICES: Record<string, Record<string, number>> = {
@@ -33,6 +33,7 @@ async function ensureSchema(db: D1Database) {
     try { await db.prepare(col).run() } catch { /* column exists */ }
   }
   try { await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`).run() } catch {}
+  try { await db.prepare(`CREATE TABLE IF NOT EXISTS redemptions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, txid TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`).run() } catch {}
   schemaReady = true
 }
 
@@ -528,7 +529,21 @@ app.post('/api/experiment/track', (c) => {
 
 app.get('/api/experiment/experiments', (c) => c.json({ experiments: EXPERIMENTS }))
 
+// Crypto Payment
+app.get('/api/crypto/wallet', (c) => c.json({ address: c.env.CRYPTO_ADDRESS || '', network: 'TRC20', currency: 'USDT', amount_usd: 29, note: 'Send exactly $29 USDT. Copy your TXID after payment to upgrade your account.' }))
+
+app.post('/api/crypto/redeem', authMiddleware, async (c) => {
+  const { txid } = await c.req.json().catch(() => ({}))
+  if (!txid || txid.length < 10) return c.json({ detail: 'Please provide a valid transaction ID (TXID)' }, 400)
+  const user: any = c.get('user')
+  if (user.plan === 'pro' || user.plan === 'agency') return c.json({ detail: 'Your account is already on a paid plan' }, 400)
+  await c.env.DB.prepare('UPDATE users SET plan = ? WHERE id = ?').bind('pro', user.id).run()
+  // Log the redemption for admin review
+  await c.env.DB.prepare('INSERT INTO redemptions (id, user_id, txid, created_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(), user.id, txid, new Date().toISOString()).run().catch(() => {})
+  return c.json({ success: true, plan: 'pro', message: 'Account upgraded to Pro! Your TXID will be verified within 24 hours.' })
+})
+
 // Health
-app.get('/api/health', (c) => c.json({ status: 'healthy', version: '2.1.0' }))
+app.get('/api/health', (c) => c.json({ status: 'healthy', version: '2.2.0' }))
 
 export const onRequest = handle(app)
